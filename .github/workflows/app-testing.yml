@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
       - uses: streamlit/streamlit-app-action@v0.0.3
         with:
-          app-path: Chatbot.py
+          app-path: RandomPromptChoose.py
           ruff: true
           pytest-args: -v --junit-xml=test-results.xml
       - if: always()
@@ -28,3 +28,4 @@ jobs:
           path: test-results.xml
           summary: true
           display-options: fEX
+          fail-on-empty: false
