@@ -73,7 +73,8 @@ with st.sidebar:
         )
 
 # --- Main page header ---
-st.title("📄 Prompt Tester")
+st.title("אלכס  ")
+# st.subheader("ראש צוות ")
 
 # --- Reveal selection button & feedback ---
 if st.session_state.selected_file_name and not st.session_state.revealed:
@@ -157,10 +158,10 @@ def get_file_name() -> str:
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"chat_{st.session_state.user_id}_{ts}.txt"
 
-if st.session_state.revealed:
-    st.download_button(
-        label="Download Chat Transcript",
-        data=collect_data_for_download(),
-        file_name=get_file_name(),
-        mime="text/plain"
-    )
+# if st.session_state.revealed:
+st.download_button(
+    label="Download Chat Transcript",
+    data=collect_data_for_download(),
+    file_name=get_file_name(),
+    mime="text/plain"
+)
