@@ -1,3 +1,5 @@
+# from time import time
+import time
 import streamlit as st
 import datetime
 import random
@@ -22,9 +24,19 @@ def initialize_session_state():
 
 initialize_session_state()
 
+def replace_tags(lines: List[str], name: str, gender: str) -> List[str]:
+    return [
+        line.replace("[NAME]", name).replace("[GENDER]", gender)
+        for line in lines
+    ]
+
+
 # --- Sidebar UI for credentials & prompt upload & guess ---
 with st.sidebar:
     st.text_input("User ID", key="user_id")
+    st.text_input("Name", key="user_name")
+    st.selectbox("Gender", ["Male","Female","Other"],key="user_gender")
+    st.checkbox("Use Delay", key="enable_delay")
     st.text_input("API Key", key="chatbot_api_key", type="password")
 
     def change_model():
@@ -56,37 +68,43 @@ with st.sidebar:
         st.session_state.uploaded_file_names = [f.name for f in uploaded_files]
         # randomly choose one file
         chosen = random.choice(uploaded_files)
-        content = chosen.read().decode("utf-8").splitlines()
-        st.session_state.selected_prompt_content = content
+        raw_content = chosen.read().decode("utf-8").splitlines()
+        personalized_content = replace_tags(
+            raw_content,
+            name=st.session_state.user_name or "[NAME]",
+            gender=st.session_state.user_gender or "[GENDER]"
+        )
+        st.session_state.selected_prompt_content = personalized_content
         st.session_state.selected_file_name = chosen.name
+
         # reset guess & reveal
         st.session_state.user_guess = None
         st.session_state.revealed = False
         st.success(f"{len(uploaded_files)} files uploaded; make your guess below.")
 
     # If we have files, show guess widget
-    if st.session_state.uploaded_file_names:
-        st.radio(
-            "Guess which prompt file was selected:",
-            options=st.session_state.uploaded_file_names,
-            key="user_guess"
-        )
+    # if st.session_state.uploaded_file_names:
+    #     st.radio(
+    #         "Guess which prompt file was selected:",
+    #         options=st.session_state.uploaded_file_names,
+    #         key="user_guess"
+    #     )
 
 # --- Main page header ---
 st.title("אלכס  ")
 # st.subheader("ראש צוות ")
 
 # --- Reveal selection button & feedback ---
-if st.session_state.selected_file_name and not st.session_state.revealed:
-    if st.button("Reveal selection"):
-        st.session_state.revealed = True
-        st.success(f"🎉 Actual Prompt File: {st.session_state.selected_file_name}")
-        # compare guess
-        if st.session_state.user_guess == st.session_state.selected_file_name:
-            st.balloons()
-            st.success("✅ Your guess was correct!")
-        else:
-            st.error(f"❌ Wrong guess. You picked “{st.session_state.user_guess}.”")
+# if st.session_state.selected_file_name and not st.session_state.revealed:
+#     if st.button("Reveal selection"):
+#         st.session_state.revealed = True
+#         st.success(f"🎉 Actual Prompt File: {st.session_state.selected_file_name}")
+#         # compare guess
+#         if st.session_state.user_guess == st.session_state.selected_file_name:
+#             st.balloons()
+#             st.success("✅ Your guess was correct!")
+#         else:
+#             st.error(f"❌ Wrong guess. You picked “{st.session_state.user_guess}.”")
 
 # --- Display existing chat messages ---
 for msg in st.session_state.messages:
@@ -124,14 +142,16 @@ if prompt := st.chat_input():
         client: Union[OpenAI, anthropic.Anthropic],
         messages: List[Dict[str, str]],
         sys_messages: List[Dict[str, str]]
-    ) -> str:
+    ) -> tuple[str, float]:
         try:
+            start_time = time.time()
             if isinstance(client, OpenAI):
                 resp = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=sys_messages + messages
                 )
-                return resp.choices[0].message.content
+                elapsed = time.time() - start_time
+                return resp.choices[0].message.content,elapsed
             else:  # Claude.ai
                 resp = client.messages.create(
                     model="claude-3-7-sonnet-20250219",
@@ -139,12 +159,18 @@ if prompt := st.chat_input():
                     system="\n".join([m["content"] for m in sys_messages]),
                     max_tokens=4096,
                 )
-                return resp.content[0].text
+                elapsed = time.time() - start_time
+                return resp.content[0].text,elapsed
         except Exception as e:
             st.error(f"Error getting response: {e}")
-            return "Error"
+            return "Error",0
 
-    reply = get_response(st.session_state.client, st.session_state.messages, sys_messages)
+    reply,tim_took = get_response(st.session_state.client, st.session_state.messages, sys_messages)
+    if st.session_state.enable_delay:
+        total_delay = random.randint(10, 15)
+        remaining = total_delay - tim_took
+        if remaining > 0:
+            time.sleep(remaining)
     st.session_state.messages.append({"role": "assistant", "content": reply})
     st.chat_message("assistant").write(reply)
 
