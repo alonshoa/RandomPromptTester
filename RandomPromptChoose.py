@@ -182,7 +182,11 @@ def collect_data_for_download() -> str:
 
 def get_file_name() -> str:
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    return f"chat_{st.session_state.user_id}_{ts}.txt"
+    if(st.session_state.uploaded_file_names and len(st.session_state.uploaded_file_names) > 0):
+        fn = st.session_state.uploaded_file_names[0]
+    else:
+        fn = "No_File_uploaded"
+    return f"chat_{st.session_state.user_id}_{fn}.txt"
 
 # if st.session_state.revealed:
 st.download_button(
