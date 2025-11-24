@@ -368,16 +368,16 @@ if st.session_state.log_file_name is None:
 # ---------------------------
 st.title("אלכס המנהל")
 
-st.markdown(
-    f"**User ID:** {st.session_state.user_id} &nbsp;&nbsp; "
-    f"**Case:** {case_id}"
-)
+# st.markdown(
+#     f"**User ID:** {st.session_state.user_id} &nbsp;&nbsp; "
+#     f"**Case:** {case_id}"
+# )
 
-# Optionally show name/gender for debugging (can be removed in production)
-st.caption(
-    f"Participant: {st.session_state.user_name or '[no name]'} "
-    f"({st.session_state.user_gender or 'no gender'})"
-)
+# # Optionally show name/gender for debugging (can be removed in production)
+# st.caption(
+#     f"Participant: {st.session_state.user_name or '[no name]'} "
+#     f"({st.session_state.user_gender or 'no gender'})"
+# )
 
 # Display existing messages
 for msg in st.session_state.messages:
@@ -433,14 +433,14 @@ if prompt := st.chat_input("Type your message here..."):
 # ---------------------------
 # Local download button (optional)
 # ---------------------------
-if st.session_state.messages:
-    transcript = build_full_transcript(
-        st.session_state.selected_prompt_content,
-        st.session_state.messages
-    )
-    st.download_button(
-        label="Download Chat Transcript",
-        data=transcript,
-        file_name=st.session_state.log_file_name,
-        mime="text/plain"
-    )
+# if st.session_state.messages:
+#     transcript = build_full_transcript(
+#         st.session_state.selected_prompt_content,
+#         st.session_state.messages
+#     )
+#     st.download_button(
+#         label="Download Chat Transcript",
+#         data=transcript,
+#         file_name=st.session_state.log_file_name,
+#         mime="text/plain"
+#     )
