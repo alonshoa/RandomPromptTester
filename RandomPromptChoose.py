@@ -5,12 +5,11 @@ import random
 from typing import List, Dict, Union
 
 import streamlit as st
-# from openai import OpenAI
 import anthropic
 from anthropic import Anthropic
 
-# from google.oauth2.service_account import Credentials
-from google.oauth2.credentials import Credentials       # ✅ correct
+import google.auth
+# from google.oauth2.credentials import Credentials       # ✅ correct
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
 
@@ -77,18 +76,26 @@ def get_query_params():
 # ---------------------------
 # Google Drive helpers
 # ---------------------------
+# @st.cache_resource
+# def get_drive_service():
+#     """
+#     Expects a service account in st.secrets["gdrive_service_account"],
+#     and grants access to Drive.
+#     """
+#     info = st.secrets["gdrive_service_account"]  # dict-like
+#     creds = Credentials.from_authorized_user_info(
+#         info,
+#         scopes=info["scopes"]
+#     )
+#     return build("drive", "v3", credentials=creds)
+
 @st.cache_resource
 def get_drive_service():
-    """
-    Expects a service account in st.secrets["gdrive_service_account"],
-    and grants access to Drive.
-    """
-    info = st.secrets["gdrive_service_account"]  # dict-like
-    creds = Credentials.from_authorized_user_info(
-        info,
-        scopes=info["scopes"]
-    )
+    # Cloud Run provides ADC for the service account attached to the service
+    SCOPES = ["https://www.googleapis.com/auth/drive"]  # read+write
+    creds, _ = google.auth.default(scopes=SCOPES)
     return build("drive", "v3", credentials=creds)
+
 
 
 def get_or_create_subfolder(service, parent_id: str, folder_name: str) -> str:
