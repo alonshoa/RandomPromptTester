@@ -1,3 +1,4 @@
+import os
 import time
 import io
 import datetime
@@ -24,7 +25,8 @@ st.set_page_config(
 
 @st.cache_resource
 def get_claude_client():
-    api_key = st.secrets["ANTHROPIC_API_KEY"]
+    # api_key = st.secrets["ANTHROPIC_API_KEY"]
+    api_key = os.getenv("ANTHROPIC_API_KEY")
     return Anthropic(api_key=api_key)
 
 # ---------------------------
@@ -339,7 +341,8 @@ case_id = st.session_state.case_id
 use_delay = case_id in (2, 4)
 
 # Google Drive service & prompt loading
-PROMPT_FOLDER_ID = st.secrets["GDRIVE_PROMPT_FOLDER_ID"]  # set this in secrets
+# PROMPT_FOLDER_ID = st.secrets["GDRIVE_PROMPT_FOLDER_ID"]  # set this in secrets
+PROMPT_FOLDER_ID = os.getenv("GDRIVE_PROMPT_FOLDER_ID")  # set this in Cloud Run env vars
 
 drive_service = get_drive_service()
 
