@@ -373,7 +373,9 @@ if st.session_state.log_file_name is None:
 # ---------------------------
 # Main UI
 # ---------------------------
-st.title("אלכס המנהל")
+
+title = "אלכס המנהל" if st.session_state.alex_gender == "male" else "אלכס המנהלת"
+st.title(title)
 
 
 # Display existing messages
