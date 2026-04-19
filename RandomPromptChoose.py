@@ -42,6 +42,8 @@ def initialize_session_state():
         "user_id": None,
         "case_id": None,
         "log_file_name": None,
+        "llm_call_count": 0,
+        "finish_code": None,
     }
     for key, val in defaults.items():
         if key not in st.session_state:
@@ -257,6 +259,7 @@ def get_response(
         system_text = "\n".join([line["content"] for line in sys_lines])
 
         start_time = time.time()
+        st.session_state.llm_call_count += 1
         resp = client.messages.create(
             # use whichever Claude model you want to lock in
             model="claude-sonnet-4-5-20250929",   # example, stable snapshot ID :contentReference[oaicite:1]{index=1}
@@ -426,4 +429,10 @@ if prompt := st.chat_input("Type your message here..."):
         st.session_state.log_file_name,
         transcript
     )
+
+if st.button("סיים שיחה", disabled=st.session_state.llm_call_count == 0):
+    st.session_state.finish_code = f"8365{st.session_state.llm_call_count}"
+
+if st.session_state.finish_code:
+    st.info(f"קוד סיום: {st.session_state.finish_code}")
 
