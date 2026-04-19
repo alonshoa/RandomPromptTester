@@ -315,7 +315,7 @@ if st.session_state.case_id is None:
         "care": 1,
         "compitent": 2,
         "both": 3,
-        "nither": 4,
+        "neither": 4,
     }
     case_base = case_type_map.get(st.session_state.case_type.strip().lower())
     if case_base is None:
