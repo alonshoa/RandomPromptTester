@@ -2,14 +2,14 @@ import time
 import io
 import datetime
 import random
+import re
 from typing import List, Dict, Union
 
 import streamlit as st
-# from openai import OpenAI
 import anthropic
 from anthropic import Anthropic
 
-# from google.oauth2.service_account import Credentials
+
 from google.oauth2.credentials import Credentials       # ✅ correct
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
@@ -35,9 +35,11 @@ def initialize_session_state():
     defaults = {
         "messages": [],
         "selected_prompt_content": None,
-        "user_id": None,
+        "case_type": None,
+        "alex_gender": None,
         "user_name": None,
         "user_gender": None,
+        "user_id": None,
         "case_id": None,
         "log_file_name": None,
     }
@@ -67,11 +69,19 @@ def get_query_params():
             return val[0]
         return val
 
-    user_id = get_single("user_id")
+    case_type = get_single("case_type")
+    alex_gender = get_single("alex_gender", "")
     user_name = get_single("name", "")
     user_gender = get_single("gender", "")
+    user_id = get_single("user_id", "")
 
-    return user_id, user_name, user_gender
+    return case_type, alex_gender, user_name, user_gender, user_id
+
+
+def filename_safe_part(value: str, fallback: str = "unknown") -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_-]+", "_", (value or "").strip())
+    cleaned = cleaned.strip("_")
+    return cleaned or fallback
 
 
 # ---------------------------
@@ -207,14 +217,6 @@ def write_transcript_to_drive(
         ).execute()
 
 
-# # ---------------------------
-# # OpenAI client helper
-# # ---------------------------
-# @st.cache_resource
-# def get_openai_client():
-#     api_key = st.secrets["OPENAI_API_KEY"]
-#     return OpenAI(api_key=api_key)
-
 
 # ---------------------------
 # Prompt personalization
@@ -252,7 +254,6 @@ def get_response(
     sys_lines - list of system prompt lines from the prompt file
     """
     try:
-        # system_text = "\n".join(sys_lines or [])
         system_text = "\n".join([line["content"] for line in sys_lines])
 
         start_time = time.time()
@@ -282,54 +283,56 @@ def get_response(
         return "Error", 0.0
 
 
-# def get_response_openai(
-#     client: OpenAI,
-#     messages: List[Dict[str, str]],
-#     sys_messages: List[Dict[str, str]]
-# ) -> tuple[str, float]:
-#     try:
-#         start_time = time.time()
-#         resp = client.chat.completions.create(
-#             model="gpt-3.5-turbo",
-#             messages=sys_messages + messages
-#         )
-#         elapsed = time.time() - start_time
-#         return resp.choices[0].message.content, elapsed
-#     except Exception as e:
-#         st.error(f"Error getting response: {e}")
-#         return "Error", 0.0
-
 
 # ---------------------------
 # Initial setup from URL
 # ---------------------------
 # Read URL parameters only once per session
-if st.session_state.user_id is None:
-    user_id_param, name_param, gender_param = get_query_params()
-    st.session_state.user_id = user_id_param
+if st.session_state.case_type is None:
+    case_type_param, alex_gender_param, name_param, gender_param, user_id_param = get_query_params()
+    st.session_state.case_type = case_type_param
+    st.session_state.alex_gender = (alex_gender_param or "").strip().lower()
     st.session_state.user_name = name_param or ""
     st.session_state.user_gender = gender_param or ""
+    st.session_state.user_id = (user_id_param or "").strip()
 
-# Validate user_id
-if not st.session_state.user_id:
-    st.error("Missing 'user_id' in URL. Please access the app with ?user_id=<id>.")
+# Validate required params
+if not st.session_state.case_type:
+    st.error("Missing 'case_type' in URL. Please access the app with ?case_type=<care|compitent|both|nither>.")
     st.stop()
 
-try:
-    uid_int = int(st.session_state.user_id)
-except ValueError:
-    st.error("user_id must be an integer.")
+if not st.session_state.alex_gender:
+    st.error("Missing 'alex_gender' in URL. Please access the app with ?alex_gender=<male|female>.")
+    st.stop()
+
+if not st.session_state.user_id:
+    st.error("Missing 'user_id' in URL. Please access the app with ?user_id=<participant_id>.")
     st.stop()
 
 # Case selection
 if st.session_state.case_id is None:
-    case_idx = uid_int % 4
-    st.session_state.case_id = case_idx + 1  # 1..4
+    case_type_map = {
+        "care": 1,
+        "compitent": 2,
+        "both": 3,
+        "nither": 4,
+    }
+    case_base = case_type_map.get(st.session_state.case_type.strip().lower())
+    if case_base is None:
+        st.error("Invalid 'case_type'. Use care, compitent, both, or nither.")
+        st.stop()
+
+    alex_gender = st.session_state.alex_gender
+    if alex_gender not in ("male", "female"):
+        st.error("Invalid 'alex_gender'. Use male or female.")
+        st.stop()
+
+    st.session_state.case_id = case_base if alex_gender == "male" else case_base + 4
 
 case_id = st.session_state.case_id
 
 # Delay decision
-use_delay = case_id in (2, 4)
+use_delay = case_id in (1, 4, 5, 8)  # cases with care or nither, which should have delay
 
 # Google Drive service & prompt loading
 PROMPT_FOLDER_ID = st.secrets["GDRIVE_PROMPT_FOLDER_ID"]  # set this in secrets
@@ -357,9 +360,13 @@ if st.session_state.selected_prompt_content is None:
 
 # Prepare log file name once
 if st.session_state.log_file_name is None:
-    date_str = datetime.datetime.now().strftime("%d_%m_%Y")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    user_id_part = filename_safe_part(st.session_state.user_id)
+    case_type_part = filename_safe_part(st.session_state.case_type)
+    alex_gender_part = filename_safe_part(st.session_state.alex_gender)
+    user_name_part = filename_safe_part(st.session_state.user_name)
     st.session_state.log_file_name = (
-        f"{st.session_state.user_id}_{date_str}_case{case_id}.txt"
+        f"{user_id_part}_{case_type_part}_{alex_gender_part}_{user_name_part}_{timestamp}_case{case_id}.txt"
     )
 
 
@@ -368,16 +375,6 @@ if st.session_state.log_file_name is None:
 # ---------------------------
 st.title("אלכס המנהל")
 
-# st.markdown(
-#     f"**User ID:** {st.session_state.user_id} &nbsp;&nbsp; "
-#     f"**Case:** {case_id}"
-# )
-
-# # Optionally show name/gender for debugging (can be removed in production)
-# st.caption(
-#     f"Participant: {st.session_state.user_name or '[no name]'} "
-#     f"({st.session_state.user_gender or 'no gender'})"
-# )
 
 # Display existing messages
 for msg in st.session_state.messages:
@@ -386,7 +383,6 @@ for msg in st.session_state.messages:
 # Chat input
 if prompt := st.chat_input("Type your message here..."):
     # Ensure model client and prompt exist
-    # client = get_openai_client()
     client = get_claude_client()
 
     if not st.session_state.selected_prompt_content:
@@ -424,23 +420,8 @@ if prompt := st.chat_input("Type your message here..."):
     )
     write_transcript_to_drive(
         drive_service,
-        PROMPT_FOLDER_ID,
+        LOG_FOLDER_ID,
         st.session_state.log_file_name,
         transcript
     )
 
-
-# ---------------------------
-# Local download button (optional)
-# ---------------------------
-# if st.session_state.messages:
-#     transcript = build_full_transcript(
-#         st.session_state.selected_prompt_content,
-#         st.session_state.messages
-#     )
-#     st.download_button(
-#         label="Download Chat Transcript",
-#         data=transcript,
-#         file_name=st.session_state.log_file_name,
-#         mime="text/plain"
-#     )
