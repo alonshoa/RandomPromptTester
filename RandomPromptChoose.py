@@ -301,7 +301,7 @@ if st.session_state.case_type is None:
 
 # Validate required params
 if not st.session_state.case_type:
-    st.error("Missing 'case_type' in URL. Please access the app with ?case_type=<care|compitent|both|nither>.")
+    st.error("Missing 'case_type' in URL. Please access the app with ?case_type=<care|competence|both|nither>.")
     st.stop()
 
 if not st.session_state.alex_gender:
@@ -316,13 +316,13 @@ if not st.session_state.user_id:
 if st.session_state.case_id is None:
     case_type_map = {
         "care": 1,
-        "compitent": 2,
+        "competence": 2,
         "both": 3,
         "neither": 4,
     }
     case_base = case_type_map.get(st.session_state.case_type.strip().lower())
     if case_base is None:
-        st.error("Invalid 'case_type'. Use care, compitent, both, or nither.")
+        st.error("Invalid 'case_type'. Use care, competence, both, or nither.")
         st.stop()
 
     alex_gender = st.session_state.alex_gender
