@@ -380,6 +380,15 @@ if st.session_state.log_file_name is None:
 title = "אלכס המנהל" if st.session_state.alex_gender == "male" else "אלכס המנהלת"
 st.title(title)
 
+def rtl(text):
+    st.markdown(
+        f"""
+        <div dir="rtl" style="text-align: right;">
+            {text}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )  
 
 # Display existing messages
 for msg in st.session_state.messages:
@@ -396,7 +405,9 @@ if prompt := st.chat_input("Type your message here..."):
 
     # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
-    st.chat_message("user").write(prompt)
+  
+    with st.chat_message("user"):
+        rtl(prompt)  
 
     # Build system messages
     sys_messages = [
@@ -416,7 +427,9 @@ if prompt := st.chat_input("Type your message here..."):
 
     # Show assistant reply
     st.session_state.messages.append({"role": "assistant", "content": reply})
-    st.chat_message("assistant").write(reply)
+   
+    with st.chat_message("assistant"):
+        rtl(reply)  
 
     # Build transcript and write to Google Drive
     transcript = build_full_transcript(
