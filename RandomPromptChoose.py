@@ -9,6 +9,15 @@ import streamlit as st
 import anthropic
 from anthropic import Anthropic
 
+from app_language import (
+    build_prompt_filename,
+    format_finish_code,
+    get_chat_placeholder,
+    get_finish_button_label,
+    get_title,
+    is_rtl_language,
+    normalize_language,
+)
 
 from google.oauth2.credentials import Credentials       # ✅ correct
 from googleapiclient.discovery import build
@@ -40,6 +49,7 @@ def initialize_session_state():
         "user_name": None,
         "user_gender": None,
         "user_id": None,
+        "language": None,
         "case_id": None,
         "log_file_name": None,
         "llm_call_count": 0,
@@ -76,8 +86,9 @@ def get_query_params():
     user_name = get_single("name", "")
     user_gender = get_single("gender", "")
     user_id = get_single("user_id", "")
+    language = get_single("language")
 
-    return case_type, alex_gender, user_name, user_gender, user_id
+    return case_type, alex_gender, user_name, user_gender, user_id, language
 
 
 def filename_safe_part(value: str, fallback: str = "unknown") -> str:
@@ -149,15 +160,21 @@ def read_text_file_from_drive(service, file_id: str) -> List[str]:
     return content.splitlines()
 
 
-def get_prompt_file_id_for_case(service, folder_id: str, case_id: int) -> str:
+def get_prompt_file_id_for_case(
+    service,
+    folder_id: str,
+    case_id: int,
+    language: str,
+) -> str:
     """
-    Finds a text file in folder whose name contains 'case<case_id>'.
-    E.g. case1.txt, case1_prompt.txt, etc.
+    Finds the exact language-specific case file in Drive.
+    E.g. he_case1.txt or en_case1.txt.
     """
+    prompt_filename = build_prompt_filename(case_id, language)
     query = (
         f"'{folder_id}' in parents and "
         f"mimeType='text/plain' and "
-        f"name contains 'case{case_id}' and "
+        f"name = '{prompt_filename}' and "
         f"trashed = false"
     )
     resp = service.files().list(
@@ -167,7 +184,7 @@ def get_prompt_file_id_for_case(service, folder_id: str, case_id: int) -> str:
     ).execute()
     files = resp.get("files", [])
     if not files:
-        raise RuntimeError(f"No prompt file found in Drive for case {case_id}")
+        raise RuntimeError(f"No prompt file found in Drive named {prompt_filename}")
     return files[0]["id"]
 
 
@@ -292,12 +309,27 @@ def get_response(
 # ---------------------------
 # Read URL parameters only once per session
 if st.session_state.case_type is None:
-    case_type_param, alex_gender_param, name_param, gender_param, user_id_param = get_query_params()
+    (
+        case_type_param,
+        alex_gender_param,
+        name_param,
+        gender_param,
+        user_id_param,
+        language_param,
+    ) = get_query_params()
     st.session_state.case_type = case_type_param
     st.session_state.alex_gender = (alex_gender_param or "").strip().lower()
     st.session_state.user_name = name_param or ""
     st.session_state.user_gender = gender_param or ""
     st.session_state.user_id = (user_id_param or "").strip()
+    try:
+        st.session_state.language = normalize_language(language_param)
+    except ValueError as exc:
+        st.error(str(exc))
+        st.stop()
+
+language = normalize_language(st.session_state.language)
+st.session_state.language = language
 
 # Validate required params
 if not st.session_state.case_type:
@@ -350,7 +382,12 @@ LOG_FOLDER_ID = get_or_create_subfolder(
 
 if st.session_state.selected_prompt_content is None:
     # 1) Find prompt file for this case
-    prompt_file_id = get_prompt_file_id_for_case(drive_service, PROMPT_FOLDER_ID, case_id)
+    prompt_file_id = get_prompt_file_id_for_case(
+        drive_service,
+        PROMPT_FOLDER_ID,
+        case_id,
+        language,
+    )
     # 2) Read raw lines
     raw_prompt_lines = read_text_file_from_drive(drive_service, prompt_file_id)
     # 3) Personalize with name/gender
@@ -367,9 +404,10 @@ if st.session_state.log_file_name is None:
     user_id_part = filename_safe_part(st.session_state.user_id)
     case_type_part = filename_safe_part(st.session_state.case_type)
     alex_gender_part = filename_safe_part(st.session_state.alex_gender)
+    language_part = filename_safe_part(language)
     user_name_part = filename_safe_part(st.session_state.user_name)
     st.session_state.log_file_name = (
-        f"{user_id_part}_{case_type_part}_{alex_gender_part}_{user_name_part}_{timestamp}_case{case_id}.txt"
+        f"{user_id_part}_{case_type_part}_{alex_gender_part}_{language_part}_{user_name_part}_{timestamp}_case{case_id}.txt"
     )
 
 
@@ -377,25 +415,29 @@ if st.session_state.log_file_name is None:
 # Main UI
 # ---------------------------
 
-title = "אלכס המנהל" if st.session_state.alex_gender == "male" else "אלכס המנהלת"
+title = get_title(language, st.session_state.alex_gender)
 st.title(title)
 
-def rtl(text):
-    st.markdown(
-        f"""
-        <div dir="rtl" style="text-align: right;">
-            {text}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )  
+def write_chat_text(text):
+    if is_rtl_language(language):
+        st.markdown(
+            f"""
+            <div dir="rtl" style="text-align: right;">
+                {text}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.write(text)
 
 # Display existing messages
 for msg in st.session_state.messages:
-    st.chat_message(msg["role"]).write(msg["content"])
+    with st.chat_message(msg["role"]):
+        write_chat_text(msg["content"])
 
 # Chat input
-if prompt := st.chat_input("Type your message here..."):
+if prompt := st.chat_input(get_chat_placeholder(language)):
     # Ensure model client and prompt exist
     client = get_claude_client()
 
@@ -407,7 +449,7 @@ if prompt := st.chat_input("Type your message here..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
   
     with st.chat_message("user"):
-        rtl(prompt)  
+        write_chat_text(prompt)
 
     # Build system messages
     sys_messages = [
@@ -429,7 +471,7 @@ if prompt := st.chat_input("Type your message here..."):
     st.session_state.messages.append({"role": "assistant", "content": reply})
    
     with st.chat_message("assistant"):
-        rtl(reply)  
+        write_chat_text(reply)
 
     # Build transcript and write to Google Drive
     transcript = build_full_transcript(
@@ -443,9 +485,9 @@ if prompt := st.chat_input("Type your message here..."):
         transcript
     )
 
-if st.button("סיים שיחה", disabled=st.session_state.llm_call_count == 0):
+if st.button(get_finish_button_label(language), disabled=st.session_state.llm_call_count == 0):
     st.session_state.finish_code = f"8365{st.session_state.llm_call_count}"
 
 if st.session_state.finish_code:
-    st.info(f"קוד סיום: {st.session_state.finish_code}")
+    st.info(format_finish_code(language, st.session_state.finish_code))
 
