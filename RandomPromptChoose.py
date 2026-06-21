@@ -3,14 +3,12 @@ import io
 import datetime
 import random
 import re
-from typing import List, Dict, Union
+from typing import List, Dict
 
 import streamlit as st
-import anthropic
 from anthropic import Anthropic
 
 from app_language import (
-    build_prompt_filename,
     format_finish_code,
     get_chat_placeholder,
     get_finish_button_label,
@@ -18,10 +16,11 @@ from app_language import (
     is_rtl_language,
     normalize_language,
 )
+from case_file_loader import read_case_file_lines
 
 from google.oauth2.credentials import Credentials       # ✅ correct
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseUpload
 
 
 # ---------------------------
@@ -146,46 +145,6 @@ def get_or_create_subfolder(service, parent_id: str, folder_name: str) -> str:
         fields="id"
     ).execute()
     return new_folder["id"]
-
-
-def read_text_file_from_drive(service, file_id: str) -> List[str]:
-    request = service.files().get_media(fileId=file_id)
-    fh = io.BytesIO()
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    fh.seek(0)
-    content = fh.read().decode("utf-8")
-    return content.splitlines()
-
-
-def get_prompt_file_id_for_case(
-    service,
-    folder_id: str,
-    case_id: int,
-    language: str,
-) -> str:
-    """
-    Finds the exact language-specific case file in Drive.
-    E.g. he_case1.txt or en_case1.txt.
-    """
-    prompt_filename = build_prompt_filename(case_id, language)
-    query = (
-        f"'{folder_id}' in parents and "
-        f"mimeType='text/plain' and "
-        f"name = '{prompt_filename}' and "
-        f"trashed = false"
-    )
-    resp = service.files().list(
-        q=query,
-        pageSize=1,
-        fields="files(id, name)"
-    ).execute()
-    files = resp.get("files", [])
-    if not files:
-        raise RuntimeError(f"No prompt file found in Drive named {prompt_filename}")
-    return files[0]["id"]
 
 
 def write_transcript_to_drive(
@@ -369,7 +328,7 @@ case_id = st.session_state.case_id
 # Delay decision
 use_delay = case_id in (1, 4, 5, 8)  # cases with care or nither, which should have delay
 
-# Google Drive service & prompt loading
+# Google Drive service for transcript saving
 PROMPT_FOLDER_ID = st.secrets["GDRIVE_PROMPT_FOLDER_ID"]  # set this in secrets
 
 drive_service = get_drive_service()
@@ -381,16 +340,14 @@ LOG_FOLDER_ID = get_or_create_subfolder(
 )
 
 if st.session_state.selected_prompt_content is None:
-    # 1) Find prompt file for this case
-    prompt_file_id = get_prompt_file_id_for_case(
-        drive_service,
-        PROMPT_FOLDER_ID,
-        case_id,
-        language,
-    )
-    # 2) Read raw lines
-    raw_prompt_lines = read_text_file_from_drive(drive_service, prompt_file_id)
-    # 3) Personalize with name/gender
+    # 1) Read raw case lines from the repository
+    try:
+        raw_prompt_lines = read_case_file_lines(case_id, language)
+    except FileNotFoundError as exc:
+        st.error(str(exc))
+        st.stop()
+
+    # 2) Personalize with name/gender
     personalized_lines = replace_tags(
         raw_prompt_lines,
         st.session_state.user_name,
