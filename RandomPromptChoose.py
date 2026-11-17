@@ -99,7 +99,7 @@ def filename_safe_part(value: str, fallback: str = "unknown") -> str:
 # ---------------------------
 # Google Drive helpers
 # ---------------------------
-@st.cache_resource
+
 def get_drive_service():
     """
     Expects a service account in st.secrets["gdrive_service_account"],
